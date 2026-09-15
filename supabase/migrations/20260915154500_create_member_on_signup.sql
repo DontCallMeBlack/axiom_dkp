@@ -43,3 +43,17 @@ CREATE TRIGGER trigger_create_clan_member_on_signup
   AFTER INSERT ON auth.users
   FOR EACH ROW
   EXECUTE FUNCTION create_clan_member_on_signup();
+
+INSERT INTO public.clan_members (user_id, in_game_name, class, role, level, dkp_balance, status)
+SELECT
+  users.id,
+  COALESCE(NULLIF(users.raw_user_meta_data->>'in_game_name', ''), 'New Member'),
+  NULLIF(users.raw_user_meta_data->>'class', ''),
+  'recruit',
+  1,
+  0,
+  'active'
+FROM auth.users AS users
+WHERE NOT EXISTS (
+  SELECT 1 FROM public.clan_members AS members WHERE members.user_id = users.id
+);
