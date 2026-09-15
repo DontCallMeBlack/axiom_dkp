@@ -1,7 +1,7 @@
 import { createContext, useContext, useEffect, useState, ReactNode, useCallback } from 'react';
 import { Session, User } from '@supabase/supabase-js';
 import { supabase } from '@/lib/supabase';
-import { ClanMember, ClanRole } from '@/types';
+import { ClanMember } from '@/types';
 
 interface AuthContextValue {
   session: Session | null;
@@ -79,25 +79,19 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     inGameName: string,
     playerClass: string
   ): Promise<{ error: string | null }> => {
-    const { data, error } = await supabase.auth.signUp({ email, password });
-    if (error) return { error: error.message };
-
-    if (data.user) {
-      const { error: memberError } = await supabase
-        .from('clan_members')
-        .insert({
-          user_id: data.user.id,
+    const { data, error } = await supabase.auth.signUp({
+      email,
+      password,
+      options: {
+        data: {
           in_game_name: inGameName,
           class: playerClass,
-          role: 'recruit' as ClanRole,
-          level: 1,
-          dkp_balance: 0,
-          status: 'active',
-        });
+        },
+      },
+    });
+    if (error) return { error: error.message };
 
-      if (memberError) {
-        return { error: memberError.message };
-      }
+    if (data.user && data.session) {
       await fetchMember(data.user.id);
     }
 
