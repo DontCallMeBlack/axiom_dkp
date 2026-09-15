@@ -6,6 +6,9 @@ value from boss_timers.dkp_award. Existing transaction triggers continue to
 update clan_members.dkp_balance exactly once per transaction.
 */
 
+ALTER TABLE public.boss_timers
+  ADD COLUMN IF NOT EXISTS dkp_award int NOT NULL DEFAULT 0;
+
 CREATE OR REPLACE FUNCTION public.reset_boss_timer_with_attendance(
   timer_id uuid,
   attendee_ids uuid[]
