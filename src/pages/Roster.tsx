@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react';
 import { supabase } from '@/lib/supabase';
 import { ClanMember, ClanRole, ROLE_LABELS, ROLE_COLORS, CLASSES, CLASS_COLORS, PlayerClass } from '@/types';
 import { useAuth } from '@/context/AuthContext';
-import { Users, Search, Crown, Swords, Shield, Edit3, X, Check } from 'lucide-react';
+import { Users, Search, Edit3, X, Check, UserMinus } from 'lucide-react';
 
 export function Roster() {
   const { isLeaderOrOfficer, isLeader, isOfficer, member: currentUser, refreshMember } = useAuth();
@@ -46,6 +46,19 @@ export function Roster() {
     });
   };
 
+  const removeMember = async (m: ClanMember) => {
+    if (!isLeader || m.user_id === currentUser?.user_id || m.role === 'leader') return;
+    if (!window.confirm(`Remove ${m.in_game_name} from the clan? Their status will be set to kicked.`)) return;
+
+    const { error } = await supabase.rpc('remove_clan_member', { member_id: m.id });
+    if (error) {
+      alert(error.message);
+      return;
+    }
+    if (editingMember?.id === m.id) setEditingMember(null);
+    fetchMembers();
+  };
+
   const saveEdit = async () => {
     if (!editingMember) return;
 
@@ -68,6 +81,7 @@ export function Roster() {
         class: editForm.class,
         level: editForm.level,
       };
+
       if (isLeader) {
         updates.role = editForm.role;
         updates.status = editForm.status;
@@ -191,12 +205,24 @@ export function Roster() {
                       {isLeaderOrOfficer && (
                         <td className="px-4 py-3">
                           {canEdit && (
-                            <button
-                              onClick={() => startEdit(m)}
-                              className="p-1.5 rounded hover:bg-clan transition-colors text-muted hover:text-gold"
-                            >
-                              <Edit3 className="w-4 h-4" />
-                            </button>
+                            <div className="flex items-center gap-1">
+                              <button
+                                onClick={() => startEdit(m)}
+                                className="p-1.5 rounded hover:bg-clan transition-colors text-muted hover:text-gold"
+                                title="Edit member"
+                              >
+                                <Edit3 className="w-4 h-4" />
+                              </button>
+                              {isLeader && !isSelf && m.role !== 'leader' && (
+                                <button
+                                  onClick={() => removeMember(m)}
+                                  className="p-1.5 rounded hover:bg-crimson/15 transition-colors text-muted hover:text-crimson-bright"
+                                  title="Remove member"
+                                >
+                                  <UserMinus className="w-4 h-4" />
+                                </button>
+                              )}
+                            </div>
                           )}
                         </td>
                       )}

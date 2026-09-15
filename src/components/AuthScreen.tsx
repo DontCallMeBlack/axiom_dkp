@@ -100,8 +100,13 @@ export function AuthScreen() {
               mode === 'otp' ? 'bg-card text-gold border border-amber-600/30' : 'text-muted hover:text-text'
             }`}
           >
-            Sign in with email code
+            Join or sign in with email code
           </button>
+          {mode === 'signup' && (
+            <p className="text-xs text-muted text-center -mt-3 mb-5">
+              If email/password signup is rate-limited, use the email-code option above.
+            </p>
+          )}
 
           <form onSubmit={handleSubmit} className="space-y-4">
             {((mode === 'signup') || (mode === 'otp' && !otpSent)) && (
