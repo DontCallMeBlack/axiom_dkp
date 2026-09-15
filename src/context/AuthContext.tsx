@@ -13,6 +13,8 @@ interface AuthContextValue {
   isLeaderOrOfficer: boolean;
   signUp: (email: string, password: string, inGameName: string, playerClass: string) => Promise<{ error: string | null }>;
   signIn: (email: string, password: string) => Promise<{ error: string | null }>;
+  requestOtp: (email: string, inGameName?: string, playerClass?: string) => Promise<{ error: string | null }>;
+  verifyOtp: (email: string, token: string, inGameName?: string, playerClass?: string) => Promise<{ error: string | null }>;
   signOut: () => Promise<void>;
   refreshMember: () => Promise<void>;
 }
@@ -104,6 +106,42 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     return { error: null };
   }, []);
 
+  const requestOtp = useCallback(async (
+    email: string,
+    inGameName?: string,
+    playerClass?: string
+  ): Promise<{ error: string | null }> => {
+    const { error } = await supabase.auth.signInWithOtp({
+      email,
+      options: {
+        shouldCreateUser: true,
+        data: inGameName && playerClass ? { in_game_name: inGameName, class: playerClass } : undefined,
+      },
+    });
+    return { error: error?.message ?? null };
+  }, []);
+
+  const verifyOtp = useCallback(async (
+    email: string,
+    token: string,
+    inGameName?: string,
+    playerClass?: string
+  ): Promise<{ error: string | null }> => {
+    const { data, error } = await supabase.auth.verifyOtp({ email, token, type: 'email' });
+    if (error) return { error: error.message };
+
+    if (data.user && inGameName && playerClass) {
+      const { error: memberError } = await supabase
+        .from('clan_members')
+        .update({ in_game_name: inGameName, class: playerClass })
+        .eq('user_id', data.user.id);
+      if (memberError) return { error: memberError.message };
+      await fetchMember(data.user.id);
+    }
+
+    return { error: null };
+  }, [fetchMember]);
+
   const signOut = useCallback(async () => {
     await supabase.auth.signOut();
     setMember(null);
@@ -125,6 +163,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         isLeaderOrOfficer,
         signUp,
         signIn,
+        requestOtp,
+        verifyOtp,
         signOut,
         refreshMember,
       }}

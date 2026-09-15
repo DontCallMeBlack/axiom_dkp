@@ -1,11 +1,13 @@
 import { useState } from 'react';
 import { useAuth } from '@/context/AuthContext';
 import { CLASSES } from '@/types';
-import { Crown, Mail, Lock, User, Swords, ChevronRight } from 'lucide-react';
+import { Crown, Mail, Lock, User, Swords, ChevronRight, KeyRound, ArrowLeft } from 'lucide-react';
 
 export function AuthScreen() {
-  const { signIn, signUp } = useAuth();
-  const [mode, setMode] = useState<'signin' | 'signup'>('signin');
+  const { signIn, signUp, requestOtp, verifyOtp } = useAuth();
+  const [mode, setMode] = useState<'signin' | 'signup' | 'otp'>('signin');
+  const [otpSent, setOtpSent] = useState(false);
+  const [otp, setOtp] = useState('');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [inGameName, setInGameName] = useState('');
@@ -18,7 +20,21 @@ export function AuthScreen() {
     setError(null);
     setLoading(true);
 
-    if (mode === 'signin') {
+    if (mode === 'otp') {
+      if (otpSent) {
+        const { error } = await verifyOtp(email, otp.trim(), inGameName.trim(), playerClass);
+        if (error) setError(error);
+      } else {
+        if (mode === 'otp' && inGameName.trim().length < 2) {
+          setError('In-game name must be at least 2 characters.');
+          setLoading(false);
+          return;
+        }
+        const { error } = await requestOtp(email, inGameName.trim(), playerClass);
+        if (error) setError(error);
+        else setOtpSent(true);
+      }
+    } else if (mode === 'signin') {
       const { error } = await signIn(email, password);
       if (error) setError(error);
     } else {
@@ -31,6 +47,13 @@ export function AuthScreen() {
       if (error) setError(error);
     }
     setLoading(false);
+  };
+
+  const selectMode = (nextMode: 'signin' | 'signup' | 'otp') => {
+    setMode(nextMode);
+    setOtpSent(false);
+    setOtp('');
+    setError(null);
   };
 
   return (
@@ -50,7 +73,7 @@ export function AuthScreen() {
           {/* Mode tabs */}
           <div className="flex gap-1 p-1 bg-soft rounded-lg mb-6">
             <button
-              onClick={() => setMode('signin')}
+              onClick={() => selectMode('signin')}
               className={`flex-1 py-2.5 rounded-md text-sm font-medium transition-all ${
                 mode === 'signin'
                   ? 'bg-card text-gold border border-amber-600/30'
@@ -60,7 +83,7 @@ export function AuthScreen() {
               Sign In
             </button>
             <button
-              onClick={() => setMode('signup')}
+              onClick={() => selectMode('signup')}
               className={`flex-1 py-2.5 rounded-md text-sm font-medium transition-all ${
                 mode === 'signup'
                   ? 'bg-card text-gold border border-amber-600/30'
@@ -70,24 +93,33 @@ export function AuthScreen() {
               Join Clan
             </button>
           </div>
+          <button
+            type="button"
+            onClick={() => selectMode('otp')}
+            className={`w-full py-2.5 rounded-md text-sm font-medium transition-all mb-6 ${
+              mode === 'otp' ? 'bg-card text-gold border border-amber-600/30' : 'text-muted hover:text-text'
+            }`}
+          >
+            Sign in with email code
+          </button>
 
           <form onSubmit={handleSubmit} className="space-y-4">
-            {mode === 'signup' && (
+            {((mode === 'signup') || (mode === 'otp' && !otpSent)) && (
               <>
                 <div>
-                  <label className="block text-xs text-muted mb-1.5 font-medium">In-Game Name</label>
-                  <div className="relative">
-                    <User className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-dim" />
-                    <input
-                      type="text"
-                      value={inGameName}
-                      onChange={(e) => setInGameName(e.target.value)}
-                      placeholder="Your character name"
-                      required
-                      className="input-clan pl-10"
-                    />
+                    <label className="block text-xs text-muted mb-1.5 font-medium">In-Game Name</label>
+                    <div className="relative">
+                      <User className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-dim" />
+                      <input
+                        type="text"
+                        value={inGameName}
+                        onChange={(e) => setInGameName(e.target.value)}
+                        placeholder="Your character name"
+                        required
+                        className="input-clan pl-10"
+                      />
+                    </div>
                   </div>
-                </div>
                 <div>
                   <label className="block text-xs text-muted mb-1.5 font-medium">Class</label>
                   <div className="relative">
@@ -121,7 +153,7 @@ export function AuthScreen() {
               </div>
             </div>
 
-            <div>
+            {mode !== 'otp' && <div>
               <label className="block text-xs text-muted mb-1.5 font-medium">Password</label>
               <div className="relative">
                 <Lock className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-dim" />
@@ -135,8 +167,28 @@ export function AuthScreen() {
                   className="input-clan pl-10"
                 />
               </div>
-            </div>
+            </div>}
 
+              {mode === 'otp' && otpSent && (
+                <div>
+                  <label className="block text-xs text-muted mb-1.5 font-medium">Email code</label>
+                  <div className="relative">
+                    <KeyRound className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-dim" />
+                    <input
+                      type="text"
+                      value={otp}
+                      onChange={(e) => setOtp(e.target.value)}
+                      placeholder="Enter the 6-digit code"
+                      inputMode="numeric"
+                      autoComplete="one-time-code"
+                      maxLength={6}
+                      required
+                      className="input-clan pl-10 tracking-[0.35em]"
+                    />
+                  </div>
+                  <p className="text-xs text-muted mt-2">Check your inbox for the code sent to {email}.</p>
+                </div>
+              )}
             {error && (
               <div className="text-sm text-crimson-bright bg-crimson/10 border border-crimson/30 rounded-lg px-4 py-3">
                 {error}
@@ -152,13 +204,18 @@ export function AuthScreen() {
                 <span className="w-4 h-4 border-2 border-stone-900/30 border-t-stone-900 rounded-full animate-spin" />
               ) : (
                 <>
-                  {mode === 'signin' ? 'Enter the Hall' : 'Join the Clan'}
+                  {mode === 'otp' ? (otpSent ? 'Verify code' : 'Send email code') : mode === 'signin' ? 'Enter the Hall' : 'Join the Clan'}
                   <ChevronRight className="w-4 h-4" />
                 </>
               )}
             </button>
           </form>
 
+          {mode === 'otp' && otpSent && (
+            <button type="button" onClick={() => setOtpSent(false)} className="text-xs text-muted hover:text-gold mt-4 flex items-center gap-1 mx-auto">
+              <ArrowLeft className="w-3 h-3" /> Use a different email
+            </button>
+          )}
           {mode === 'signup' && (
             <p className="text-xs text-dim text-center mt-4">
               New members join as Recruits. An Officer will promote you.
