@@ -95,6 +95,8 @@ $$;
 REVOKE ALL ON FUNCTION public.reset_boss_timer_with_attendance(uuid, uuid[]) FROM PUBLIC;
 GRANT EXECUTE ON FUNCTION public.reset_boss_timer_with_attendance(uuid, uuid[]) TO authenticated;
 
+SELECT set_config('app.skip_timer_history', 'true', true);
+
 UPDATE public.boss_timers
 SET dkp_award = CASE name
   WHEN '170' THEN 20
@@ -114,3 +116,5 @@ SET dkp_award = CASE name
   WHEN 'test' THEN 0
   ELSE dkp_award
 END;
+
+SELECT set_config('app.skip_timer_history', 'false', true);
