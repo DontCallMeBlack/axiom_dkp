@@ -43,6 +43,8 @@ SET search_path = public
 AS $$
 DECLARE
   actor_id uuid;
+  old_next_spawn_at timestamptz;
+  old_window_minutes int;
 BEGIN
   SELECT id INTO actor_id
   FROM clan_members
@@ -54,6 +56,16 @@ BEGIN
     RAISE EXCEPTION 'Invalid timer values';
   END IF;
 
+  SELECT next_spawn_at, window_minutes
+  INTO old_next_spawn_at, old_window_minutes
+  FROM boss_timers
+  WHERE id = timer_id
+  FOR UPDATE;
+  IF NOT FOUND THEN
+    RAISE EXCEPTION 'Boss timer was not found';
+  END IF;
+
+  PERFORM set_config('app.skip_timer_history', 'true', true);
   UPDATE boss_timers
   SET next_spawn_at = new_next_spawn_at,
       window_minutes = new_window_minutes,
@@ -61,10 +73,15 @@ BEGIN
       last_action_by = actor_id,
       updated_at = now()
   WHERE id = timer_id;
+  PERFORM set_config('app.skip_timer_history', 'false', true);
 
-  IF NOT FOUND THEN
-    RAISE EXCEPTION 'Boss timer was not found';
-  END IF;
+  INSERT INTO timer_history (
+    timer_id, action, previous_spawn_at, new_spawn_at,
+    previous_window_minutes, new_window_minutes, changed_by
+  ) VALUES (
+    timer_id, 'modify', old_next_spawn_at, new_next_spawn_at,
+    old_window_minutes, new_window_minutes, actor_id
+  );
 END;
 $$;
 

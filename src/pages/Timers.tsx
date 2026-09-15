@@ -21,7 +21,7 @@ const formatMinutes = (minutes: number) => {
 };
 
 export function Timers() {
-  const { member } = useAuth();
+  const { member, refreshMember } = useAuth();
   const [timers, setTimers] = useState<BossTimer[]>([]);
   const [history, setHistory] = useState<TimerHistory[]>([]);
   const [members, setMembers] = useState<ClanMember[]>([]);
@@ -123,7 +123,7 @@ export function Timers() {
       return;
     }
     setResetting(null);
-    await fetchData();
+    await Promise.all([fetchData(), refreshMember()]);
   };
 
   const fetchHistory = async () => {
