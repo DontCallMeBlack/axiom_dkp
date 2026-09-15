@@ -131,10 +131,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     if (error) return { error: error.message };
 
     if (data.user && inGameName && playerClass) {
-      const { error: memberError } = await supabase
-        .from('clan_members')
-        .update({ in_game_name: inGameName, class: playerClass })
-        .eq('user_id', data.user.id);
+      const { error: memberError } = await supabase.rpc('update_my_clan_profile', {
+        new_in_game_name: inGameName,
+        new_class: playerClass,
+      });
       if (memberError) return { error: memberError.message };
       await fetchMember(data.user.id);
     }
