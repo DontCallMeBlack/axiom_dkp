@@ -1,5 +1,6 @@
 export type ClanRole = 'leader' | 'officer' | 'member' | 'recruit';
 export type MemberStatus = 'active' | 'inactive' | 'kicked';
+export type JoinRequestStatus = 'pending' | 'approved' | 'rejected';
 export type EventStatus = 'scheduled' | 'completed' | 'cancelled';
 export type RuleCategory = 'general' | 'dkp' | 'raid' | 'conduct' | 'ranking';
 export type TimerAction = 'reset' | 'modify';
@@ -15,6 +16,17 @@ export interface ClanMember {
   dkp_balance: number;
   status: MemberStatus;
   joined_at: string;
+  created_at: string;
+}
+
+export interface JoinRequest {
+  id: string;
+  email: string;
+  in_game_name: string;
+  class: string;
+  status: JoinRequestStatus;
+  reviewed_by: string | null;
+  reviewed_at: string | null;
   created_at: string;
 }
 

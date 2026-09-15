@@ -11,22 +11,14 @@ interface AuthContextValue {
   isLeader: boolean;
   isOfficer: boolean;
   isLeaderOrOfficer: boolean;
-  signUp: (email: string, password: string, inGameName: string, playerClass: string) => Promise<{ error: string | null }>;
   signIn: (email: string, password: string) => Promise<{ error: string | null }>;
-  requestOtp: (email: string, inGameName?: string, playerClass?: string) => Promise<{ error: string | null }>;
-  verifyOtp: (email: string, token: string, inGameName?: string, playerClass?: string) => Promise<{ error: string | null }>;
+  signUp: (email: string, password: string) => Promise<{ error: string | null }>;
+  submitJoinRequest: (email: string, inGameName: string, playerClass: string) => Promise<{ error: string | null }>;
   signOut: () => Promise<void>;
   refreshMember: () => Promise<void>;
 }
 
 const AuthContext = createContext<AuthContextValue | undefined>(undefined);
-
-function formatAuthError(message: string): string {
-  if (message.toLowerCase().includes('email rate limit exceeded')) {
-    return 'Supabase has temporarily limited email delivery. Wait before requesting another email. If you already registered, use Sign In with your password; otherwise ask the administrator to configure a custom SMTP provider or increase the email rate limit in Supabase.';
-  }
-  return message;
-}
 
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [session, setSession] = useState<Session | null>(null);
@@ -82,72 +74,34 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     };
   }, [fetchMember]);
 
-  const signUp = useCallback(async (
+  const signIn = useCallback(async (email: string, password: string): Promise<{ error: string | null }> => {
+    const { error } = await supabase.auth.signInWithPassword({ email, password });
+    if (error) return { error: error.message };
+    return { error: null };
+  }, []);
+
+  const signUp = useCallback(async (email: string, password: string): Promise<{ error: string | null }> => {
+    const { error } = await supabase.auth.signUp({ email: email.trim().toLowerCase(), password });
+    if (error) return { error: error.message };
+    return { error: null };
+  }, []);
+
+  const submitJoinRequest = useCallback(async (
     email: string,
-    password: string,
     inGameName: string,
     playerClass: string
   ): Promise<{ error: string | null }> => {
-    const { data, error } = await supabase.auth.signUp({
-      email,
-      password,
-      options: {
-        data: {
-          in_game_name: inGameName,
-          class: playerClass,
-        },
-      },
+    const { error } = await supabase.from('join_requests').insert({
+      email: email.trim().toLowerCase(),
+      in_game_name: inGameName.trim(),
+      class: playerClass,
     });
-    if (error) return { error: formatAuthError(error.message) };
-
-    if (data.user && data.session) {
-      await fetchMember(data.user.id);
+    if (error) {
+      if (error.code === '23505') return { error: 'A join request for this email is already pending or has been approved.' };
+      return { error: error.message };
     }
-
-    return { error: null };
-  }, [fetchMember]);
-
-  const signIn = useCallback(async (email: string, password: string): Promise<{ error: string | null }> => {
-    const { error } = await supabase.auth.signInWithPassword({ email, password });
-    if (error) return { error: formatAuthError(error.message) };
     return { error: null };
   }, []);
-
-  const requestOtp = useCallback(async (
-    email: string,
-    inGameName?: string,
-    playerClass?: string
-  ): Promise<{ error: string | null }> => {
-    const { error } = await supabase.auth.signInWithOtp({
-      email,
-      options: {
-        shouldCreateUser: true,
-        data: inGameName && playerClass ? { in_game_name: inGameName, class: playerClass } : undefined,
-      },
-    });
-    return { error: error ? formatAuthError(error.message) : null };
-  }, []);
-
-  const verifyOtp = useCallback(async (
-    email: string,
-    token: string,
-    inGameName?: string,
-    playerClass?: string
-  ): Promise<{ error: string | null }> => {
-    const { data, error } = await supabase.auth.verifyOtp({ email, token, type: 'email' });
-    if (error) return { error: formatAuthError(error.message) };
-
-    if (data.user && inGameName && playerClass) {
-      const { error: memberError } = await supabase.rpc('update_my_clan_profile', {
-        new_in_game_name: inGameName,
-        new_class: playerClass,
-      });
-      if (memberError) return { error: formatAuthError(memberError.message) };
-      await fetchMember(data.user.id);
-    }
-
-    return { error: null };
-  }, [fetchMember]);
 
   const signOut = useCallback(async () => {
     await supabase.auth.signOut();
@@ -168,10 +122,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         isLeader,
         isOfficer,
         isLeaderOrOfficer,
-        signUp,
         signIn,
-        requestOtp,
-        verifyOtp,
+        signUp,
+        submitJoinRequest,
         signOut,
         refreshMember,
       }}

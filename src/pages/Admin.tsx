@@ -1,8 +1,8 @@
 import { useEffect, useState } from 'react';
 import { supabase } from '@/lib/supabase';
-import { ClanMember, ClanRole, DkpTransaction, ROLE_LABELS, ROLE_COLORS, CLASS_COLORS, PlayerClass } from '@/types';
+import { ClanMember, ClanRole, DkpTransaction, JoinRequest, ROLE_LABELS, ROLE_COLORS, CLASS_COLORS, PlayerClass } from '@/types';
 import { useAuth } from '@/context/AuthContext';
-import { Shield, Users, Trophy, CalendarDays, TrendingUp, TrendingDown, Crown } from 'lucide-react';
+import { Shield, Users, Trophy, CalendarDays, TrendingUp, TrendingDown, Crown, Check, X } from 'lucide-react';
 
 export function Admin() {
   const { isLeader, isLeaderOrOfficer } = useAuth();
@@ -10,6 +10,7 @@ export function Admin() {
   const [transactions, setTransactions] = useState<DkpTransaction[]>([]);
   const [eventCount, setEventCount] = useState(0);
   const [loading, setLoading] = useState(true);
+  const [joinRequests, setJoinRequests] = useState<JoinRequest[]>([]);
 
   useEffect(() => {
     fetchData();
@@ -23,6 +24,12 @@ export function Admin() {
       .order('role', { ascending: false })
       .order('dkp_balance', { ascending: false });
     setMembers(m as ClanMember[] ?? []);
+    const { data: requests } = await supabase
+      .from('join_requests')
+      .select('*')
+      .eq('status', 'pending')
+      .order('created_at', { ascending: true });
+    setJoinRequests(requests as JoinRequest[] ?? []);
 
     const { data: t } = await supabase
       .from('dkp_transactions')
@@ -38,6 +45,21 @@ export function Admin() {
     setLoading(false);
   };
 
+  const reviewRequest = async (request: JoinRequest, status: 'approved' | 'rejected') => {
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) return;
+    const { error } = await supabase
+      .from('join_requests')
+      .update({ status, reviewed_by: user.id, reviewed_at: new Date().toISOString() })
+      .eq('id', request.id)
+      .eq('status', 'pending');
+    if (error) {
+      alert(error.message);
+      return;
+    }
+    fetchData();
+  };
+
   if (!isLeaderOrOfficer) {
     return (
       <div className="card p-12 text-center">
@@ -48,8 +70,6 @@ export function Admin() {
   }
 
   const activeMembers = members.filter((m) => m.status === 'active');
-  const recruits = members.filter((m) => m.role === 'recruit');
-  const officers = members.filter((m) => m.role === 'officer' || m.role === 'leader');
   const totalDkp = activeMembers.reduce((sum, m) => sum + m.dkp_balance, 0);
   const totalAwarded = transactions.filter((t) => t.amount > 0).reduce((sum, t) => sum + t.amount, 0);
   const totalSpent = transactions.filter((t) => t.amount < 0).reduce((sum, t) => sum + Math.abs(t.amount), 0);
@@ -84,6 +104,34 @@ export function Admin() {
               <div className={`w-10 h-10 rounded-lg bg-soft flex items-center justify-center ${stat.color} mb-3`}>
                 <Icon className="w-5 h-5" />
               </div>
+
+              {isLeaderOrOfficer && (
+                <div className="card p-6">
+                  <h2 className="font-cinzel text-lg font-bold flex items-center gap-2 mb-5">
+                    <Users className="w-5 h-5 text-gold" /> Join Requests
+                  </h2>
+                  {joinRequests.length === 0 ? (
+                    <p className="text-sm text-dim">No pending join requests.</p>
+                  ) : (
+                    <div className="space-y-2">
+                      {joinRequests.map((request) => (
+                        <div key={request.id} className="flex flex-wrap items-center gap-3 p-3 rounded-lg bg-soft/50 border border-clan-soft">
+                          <div className="flex-1 min-w-48">
+                            <p className="text-sm font-medium">{request.in_game_name} · {request.class}</p>
+                            <p className="text-xs text-dim">{request.email}</p>
+                          </div>
+                          <button onClick={() => reviewRequest(request, 'approved')} className="btn-gold flex items-center gap-1.5">
+                            <Check className="w-4 h-4" /> Approve
+                          </button>
+                          <button onClick={() => reviewRequest(request, 'rejected')} className="btn-ghost flex items-center gap-1.5 text-crimson-bright">
+                            <X className="w-4 h-4" /> Reject
+                          </button>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              )}
               <p className="text-2xl font-cinzel font-bold">{stat.value}</p>
               <p className="text-xs text-muted mt-1">{stat.label}</p>
             </div>
