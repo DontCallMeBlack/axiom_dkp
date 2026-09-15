@@ -110,6 +110,10 @@ export function Admin() {
                   <h2 className="font-cinzel text-lg font-bold flex items-center gap-2 mb-5">
                     <Users className="w-5 h-5 text-gold" /> Join Requests
                   </h2>
+                  <p className="text-xs text-muted mb-4">
+                    Approval links an existing account automatically. If the applicant does not have an account yet,
+                    they must use <span className="text-gold">Create approved account</span> on the login screen after approval.
+                  </p>
                   {joinRequests.length === 0 ? (
                     <p className="text-sm text-dim">No pending join requests.</p>
                   ) : (
