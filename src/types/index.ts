@@ -63,12 +63,31 @@ export interface BossTimer {
   name: string;
   respawn_minutes: number;
   window_minutes: number;
+  dkp_award: number;
   next_spawn_at: string | null;
   last_action: TimerAction | null;
   last_action_by: string | null;
   updated_at: string;
   last_action_member?: Pick<ClanMember, 'in_game_name'> | null;
 }
+
+export const BOSS_DKP_VALUES: Record<string, number> = {
+  '170': 20,
+  '180': 25,
+  Mordy: 10,
+  '210': 20,
+  '215': 20,
+  Proteus: 0,
+  Dino: 65,
+  Bloodthorn: 30,
+  Gelebron: 50,
+  Crom: 120,
+  aggy: 5,
+  necro: 20,
+  hrung: 5,
+  valley: 5,
+  test: 0,
+};
 
 export interface TimerHistory {
   id: string;
@@ -81,6 +100,7 @@ export interface TimerHistory {
   changed_by: string;
   created_at: string;
   changed_by_member?: Pick<ClanMember, 'in_game_name'> | null;
+  boss_timers?: Pick<BossTimer, 'name'> | null;
 }
 
 export const ROLE_LABELS: Record<ClanRole, string> = {

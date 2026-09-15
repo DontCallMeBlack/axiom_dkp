@@ -1,8 +1,8 @@
 import { useEffect, useMemo, useState } from 'react';
-import { Clock3, History, Pencil, RotateCcw, Timer as TimerIcon, X } from 'lucide-react';
+import { Clock3, History, Pencil, RotateCcw, Timer as TimerIcon, X, Users } from 'lucide-react';
 import { supabase } from '@/lib/supabase';
 import { useAuth } from '@/context/AuthContext';
-import { BossTimer, TimerHistory } from '@/types';
+import { BOSS_DKP_VALUES, BossTimer, ClanMember, TimerHistory } from '@/types';
 
 const formatDuration = (seconds: number) => {
   if (seconds <= 0) return 'Ready';
@@ -24,6 +24,10 @@ export function Timers() {
   const { member } = useAuth();
   const [timers, setTimers] = useState<BossTimer[]>([]);
   const [history, setHistory] = useState<TimerHistory[]>([]);
+  const [members, setMembers] = useState<ClanMember[]>([]);
+  const [resetting, setResetting] = useState<BossTimer | null>(null);
+  const [attendeeIds, setAttendeeIds] = useState<string[]>([]);
+  const [resetConfirmation, setResetConfirmation] = useState('');
   const [editing, setEditing] = useState<BossTimer | null>(null);
   const [remainingMinutes, setRemainingMinutes] = useState('');
   const [windowMinutes, setWindowMinutes] = useState('');
@@ -46,15 +50,22 @@ export function Timers() {
       .from('timer_history')
       .select('*, changed_by_member:clan_members!changed_by(in_game_name), boss_timers!inner(name)')
       .order('created_at', { ascending: false })
-      .limit(100)
-    ]).then(([, historyResult]) => {
+      .limit(100),
+      supabase.from('clan_members').select('*').eq('status', 'active').order('in_game_name')
+    ]).then(([, historyResult, membersResult]) => {
       if (historyResult.error) setError(historyResult.error.message);
+      if (membersResult.error) setError(membersResult.error.message);
       setHistory((historyResult.data as TimerHistory[]) ?? []);
+      setMembers((membersResult.data as ClanMember[]) ?? []);
       setLoading(false);
     });
     const interval = window.setInterval(() => setNow(Date.now()), 1000);
     return () => window.clearInterval(interval);
   }, []);
+
+  const fetchData = async () => {
+    await Promise.all([fetchTimers(), fetchHistory()]);
+  };
 
   const openEdit = (timer: BossTimer) => {
     setEditing(timer);
@@ -74,11 +85,11 @@ export function Timers() {
       return;
     }
     setSaving(true);
-    const { error: updateError } = await supabase.from('boss_timers').update({
-      next_spawn_at: new Date(Date.now() + remaining * 60000).toISOString(),
-      window_minutes: window,
-      last_action: 'modify',
-    }).eq('id', editing.id);
+    const { error: updateError } = await supabase.rpc('modify_boss_timer', {
+      timer_id: editing.id,
+      new_next_spawn_at: new Date(Date.now() + remaining * 60000).toISOString(),
+      new_window_minutes: window,
+    });
     setSaving(false);
     if (updateError) { setError(updateError.message); return; }
     setEditing(null);
@@ -86,12 +97,33 @@ export function Timers() {
   };
 
   const resetTimer = async (timer: BossTimer) => {
-    const { error: updateError } = await supabase.from('boss_timers').update({
-      next_spawn_at: new Date(Date.now() + timer.respawn_minutes * 60000).toISOString(),
-      last_action: 'reset',
-    }).eq('id', timer.id);
-    if (updateError) setError(updateError.message);
-    else await Promise.all([fetchTimers(), fetchHistory()]);
+    setResetting(timer);
+    setAttendeeIds([]);
+    setResetConfirmation('');
+    setError(null);
+  };
+
+  const confirmReset = async () => {
+    if (!resetting || attendeeIds.length === 0) {
+      setError('Select at least one clan member who attended this boss.');
+      return;
+    }
+    if (resetConfirmation.trim().toLowerCase() !== resetting.name.toLowerCase()) {
+      setError(`Type "${resetting.name}" to confirm this reset.`);
+      return;
+    }
+    setSaving(true);
+    const { error: resetError } = await supabase.rpc('reset_boss_timer_with_attendance', {
+      timer_id: resetting.id,
+      attendee_ids: attendeeIds,
+    });
+    setSaving(false);
+    if (resetError) {
+      setError(resetError.message);
+      return;
+    }
+    setResetting(null);
+    await fetchData();
   };
 
   const fetchHistory = async () => {
@@ -136,6 +168,7 @@ export function Timers() {
                   <div>
                     <h2 className="font-cinzel text-lg font-bold">{timer.name}</h2>
                     <p className="text-xs text-dim mt-1">Respawn: {formatMinutes(timer.respawn_minutes)} · Window: {formatMinutes(timer.window_minutes)}</p>
+                    {BOSS_DKP_VALUES[timer.name] > 0 && <p className="text-xs text-gold mt-1">Award: {BOSS_DKP_VALUES[timer.name]} DKP per attendee</p>}
                   </div>
                   <Clock3 className={`w-5 h-5 ${seconds ? 'text-gold' : 'text-emerald-400'}`} />
                 </div>
@@ -143,7 +176,7 @@ export function Timers() {
                 <p className="text-xs text-dim mt-1">{timer.next_spawn_at ? `Expected ${new Date(timer.next_spawn_at).toLocaleString()}` : 'Not started'}</p>
                 {actor && <p className="text-xs text-muted mt-3">Last {timer.last_action} by <span className="text-gold">{actor}</span></p>}
                 <div className="flex gap-2 mt-4">
-                  <button onClick={() => resetTimer(timer)} className="btn-gold flex-1 flex items-center justify-center gap-2"><RotateCcw className="w-4 h-4" /> Reset</button>
+                      <button onClick={() => resetTimer(timer)} className="btn-gold flex-1 flex items-center justify-center gap-2"><RotateCcw className="w-4 h-4" /> Reset</button>
                   <button onClick={() => openEdit(timer)} className="btn-ghost flex-1 flex items-center justify-center gap-2"><Pencil className="w-4 h-4" /> Modify</button>
                 </div>
                 {(historyByTimer[timer.name]?.length ?? 0) > 0 && <p className="text-xs text-dim mt-3 flex items-center gap-1"><History className="w-3 h-3" /> {historyByTimer[timer.name].length} recorded changes</p>}
@@ -173,6 +206,31 @@ export function Timers() {
           <label className="block text-sm text-muted mb-2">Minutes until respawn<input type="number" min="0" step="1" value={remainingMinutes} onChange={(e) => setRemainingMinutes(e.target.value)} className="input-clan mt-1" /></label>
           <label className="block text-sm text-muted mb-5">Spawn window (minutes)<input type="number" min="0" step="1" value={windowMinutes} onChange={(e) => setWindowMinutes(e.target.value)} className="input-clan mt-1" /></label>
           <button onClick={saveTimer} disabled={saving} className="btn-gold w-full">{saving ? 'Saving...' : 'Save Timer'}</button>
+        </div>
+      </div>}
+
+      {resetting && <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-sm flex items-center justify-center p-4">
+        <div className="card p-6 w-full max-w-md max-h-[90vh] overflow-y-auto">
+          <div className="flex items-center justify-between mb-2">
+            <h2 className="font-cinzel text-lg font-bold">Who attended {resetting.name}?</h2>
+            <button onClick={() => setResetting(null)}><X className="w-5 h-5 text-dim" /></button>
+          </div>
+          <p className="text-sm text-muted mb-4">Each selected member receives {BOSS_DKP_VALUES[resetting.name] ?? 0} DKP. This action cannot be undone.</p>
+          <div className="space-y-2 mb-5">
+            {members.map((clanMember) => {
+              const selected = attendeeIds.includes(clanMember.id);
+              return <label key={clanMember.id} className={`flex items-center gap-3 p-3 rounded-lg border cursor-pointer ${selected ? 'border-amber-500/40 bg-amber-500/10' : 'border-clan-soft bg-soft/40'}`}>
+                <input type="checkbox" checked={selected} onChange={() => setAttendeeIds((current) => selected ? current.filter((id) => id !== clanMember.id) : [...current, clanMember.id])} />
+                <Users className="w-4 h-4 text-gold" />
+                <span className="text-sm">{clanMember.in_game_name}</span>
+                <span className="text-xs text-dim ml-auto">{clanMember.class ?? 'Unknown'}</span>
+              </label>;
+            })}
+          </div>
+          <label className="block text-sm text-muted mb-5">Type <strong className="text-gold">{resetting.name}</strong> to confirm
+            <input value={resetConfirmation} onChange={(event) => setResetConfirmation(event.target.value)} className="input-clan mt-1" placeholder={resetting.name} />
+          </label>
+          <button onClick={confirmReset} disabled={saving} className="btn-gold w-full">{saving ? 'Recording attendance...' : `Reset and award ${attendeeIds.length * (BOSS_DKP_VALUES[resetting.name] ?? 0)} DKP`}</button>
         </div>
       </div>}
     </div>
